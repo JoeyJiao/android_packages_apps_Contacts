@@ -42,6 +42,7 @@ import android.content.DialogInterface;
 import android.content.IContentService;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.SharedPreferences.Editor;
 import android.content.UriMatcher;
 import android.content.res.ColorStateList;
 import android.content.res.Resources;
@@ -873,6 +874,17 @@ public class ContactsListActivity extends ListActivity implements View.OnCreateC
         mJustCreated = true;
 
         mSyncEnabled = true;
+        
+        //import SimCard Contacts
+        if(ePrefs!=null){
+	        boolean isFirstImportFromSim=ePrefs.getBoolean("isFirstImportFromSim",true);
+	        if(isFirstImportFromSim){
+	        	handleImportRequest(R.string.import_from_sim);
+	        	Editor et=ePrefs.edit();
+	        	et.putBoolean("isFirstImportFromSim", false);
+	        	et.commit();
+	        }
+        }
     }
 
     /**

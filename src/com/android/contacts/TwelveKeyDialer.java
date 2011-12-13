@@ -16,6 +16,8 @@
 
 package com.android.contacts;
 
+import java.util.ArrayList;
+
 import com.android.internal.telephony.ITelephony;
 import com.android.phone.CallLogAsync;
 import com.android.phone.HapticFeedback;
@@ -39,6 +41,7 @@ import android.os.ServiceManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.os.Vibrator;
+import android.provider.ContactsContract;
 import android.provider.ContactsContract.Intents.Insert;
 import android.provider.ContactsContract.Contacts;
 import android.provider.Contacts.Phones;
@@ -63,8 +66,11 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
-import android.widget.BaseAdapter;
+import android.widget.AdapterView.OnItemClickListener;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
+import android.widget.BaseAdapter;
 import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -79,6 +85,8 @@ import android.graphics.Color;
 import android.preference.PreferenceManager;
 import android.provider.CallLog.Calls;
 import android.widget.ImageButton;
+
+import android.content.ContentResolver;
 
 /**
  * Dialer activity that displays the typical twelve key interface.
@@ -103,7 +111,7 @@ public class TwelveKeyDialer extends Activity implements View.OnClickListener,
     /** Play the vibrate pattern only once. */
     private static final int VIBRATE_NO_REPEAT = -1;
 
-    private EditText mDigits;
+    private AutoCompleteTextView mDigits;
     private View mDelete;
     private MenuItem mAddToContactMenuItem;
     private ToneGenerator mToneGenerator;
@@ -199,6 +207,101 @@ public class TwelveKeyDialer extends Activity implements View.OnClickListener,
         // DTMF Tones do not need to be played here any longer -
         // the DTMF dialer handles that functionality now.
     }
+    
+    private ContentResolver contentResolver=null;
+    private static ArrayList<String> contactList=new ArrayList<String>();
+    private ArrayList<String> getAllContacts(){
+    	ArrayList<String> contactList=new ArrayList<String>();
+//    	System.out.println("JOEY time5="+System.currentTimeMillis());
+    	Cursor cursor=getAllContactsCursor();
+//    	System.out.println("JOEY time6="+System.currentTimeMillis());
+    	Cursor phoneCursor=null;
+    	if(cursor!=null && cursor.moveToFirst()){
+    		do{
+//    			System.out.println("JOEY time7="+System.currentTimeMillis());
+    			phoneCursor=getPhoneNumbers(cursor);
+//    			System.out.println("JOEY time8="+System.currentTimeMillis());
+    			if(phoneCursor!=null && phoneCursor.moveToFirst()){
+    				do{
+    					String phoneNumber=phoneCursor.getString(phoneCursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER));
+//    					System.out.println("JOEY time9="+System.currentTimeMillis());
+    					if(phoneNumber!=null && !phoneNumber.equals("")){
+    						String displayName=getDisplayName(cursor);
+//    						System.out.println("JOEY time10="+System.currentTimeMillis());
+    						if(displayName!=null)
+    							contactList.add(phoneNumber+" ("+displayName+")");
+    					}
+    				}while(phoneCursor.moveToNext());
+//    				System.out.println("JOEY time11="+System.currentTimeMillis());
+    			}
+    		}while(cursor.moveToNext());
+    		phoneCursor.close();
+    		cursor.close();
+    	}
+    	return contactList;
+    }
+    private Cursor getAllContactsCursor(){
+    	if(contentResolver==null){
+    		contentResolver=getContentResolver();
+    	}
+    	return contentResolver.query(ContactsContract.Contacts.CONTENT_URI, null, null, null, null);
+    }
+    private String getContactId(Cursor cursor){
+    	return cursor!=null?cursor.getString(cursor.getColumnIndex(ContactsContract.Contacts._ID)):null;
+    }
+    private String getDisplayName(Cursor cursor){
+    	return cursor!=null?cursor.getString(cursor.getColumnIndex(ContactsContract.Contacts.DISPLAY_NAME)):null;
+    }
+    private boolean hasPhoneNumber(Cursor cursor){
+    	return (cursor!=null && cursor.getInt(cursor.getColumnIndex(ContactsContract.Contacts.HAS_PHONE_NUMBER))>=1)?true:false;
+    }
+    private Cursor getPhoneNumbers(Cursor cursor){
+//    	if(cursor!=null && hasPhoneNumber(cursor)){
+    	if(cursor!=null){
+    		Cursor phoneCursor=contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,null,
+    				ContactsContract.CommonDataKinds.Phone.CONTACT_ID+"="+getContactId(cursor),
+    				null,null);
+    		return phoneCursor;
+    	}
+    	return null;
+    }
+    private ArrayList<String> getMatchPhoneNumberContacts(String prefixNumber){
+    	ArrayList<String> matchList=new ArrayList<String>();
+    	try{
+    		Integer.parseInt(prefixNumber);
+    	}catch(NumberFormatException e){
+    		return matchList;
+    	}
+    	if(contactList.size()==0)
+    		return matchList;
+    	for(int i=0;i<contactList.size();i++){
+    		if(contactList.get(i).contains(prefixNumber))
+    			matchList.add(contactList.get(i));
+    	}
+    	return matchList;
+    }
+    private void showMatchNumber(String prefixNumber){
+    	if(prefixNumber==null || prefixNumber.length()<2)
+    		return;
+    	final ArrayList<String> matchList=getMatchPhoneNumberContacts(prefixNumber);
+    	if(matchList.size()==0){
+    		return;
+    	}
+    	ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,R.layout.simple_dropdown_item_1line,matchList);
+		mDigits.setAdapter(adapter);
+		mDigits.setThreshold(2);
+		
+		mDigits.setOnItemClickListener(new AdapterView.OnItemClickListener(){
+
+			@Override
+			public void onItemClick(AdapterView<?> parent, View view,
+					int position, long id) {
+				// TODO Auto-generated method stub
+				mDigits.setText(matchList.get(position).split(" ")[0]);
+			}
+			
+		});
+    }
 
     public void afterTextChanged(Editable input) {
         if (SpecialCharSequenceMgr.handleChars(this, input.toString(), mDigits)) {
@@ -208,6 +311,9 @@ public class TwelveKeyDialer extends Activity implements View.OnClickListener,
 
         if (!isDigitsEmpty()) {
             mDigits.setBackgroundDrawable(mDigitsBackground);
+//            System.out.println("JOEY time1="+System.currentTimeMillis());
+            showMatchNumber(mDigits.getText().toString());
+//            System.out.println("JOEY time2="+System.currentTimeMillis());
         } else {
             mDigits.setCursorVisible(false);
             mDigits.setBackgroundDrawable(mDigitsEmptyBackground);
@@ -236,7 +342,7 @@ public class TwelveKeyDialer extends Activity implements View.OnClickListener,
         mDigitsBackground = r.getDrawable(R.drawable.btn_dial_textfield_active);
         mDigitsEmptyBackground = r.getDrawable(R.drawable.btn_dial_textfield);
 
-        mDigits = (EditText) findViewById(R.id.digits);
+        mDigits = (AutoCompleteTextView) findViewById(R.id.digits);
         mDigits.setKeyListener(DialerKeyListener.getInstance());
         mDigits.setOnClickListener(this);
         mDigits.setOnKeyListener(this);
@@ -280,6 +386,16 @@ public class TwelveKeyDialer extends Activity implements View.OnClickListener,
             super.onRestoreInstanceState(icicle);
         }
 
+        new Thread(new Runnable(){
+
+			@Override
+			public void run() {
+				// TODO Auto-generated method stub
+//				System.out.println("JOEY time3="+System.currentTimeMillis());
+		        contactList=getAllContacts();
+//		        System.out.println("JOEY time4="+System.currentTimeMillis());
+			}
+        }).start();
     }
 
     @Override

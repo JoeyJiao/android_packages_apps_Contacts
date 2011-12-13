@@ -26,7 +26,7 @@
          java code.
     -->
     <!-- TODO: Use a textAppearance to control the display of the number -->
-    <EditText android:id="@+id/digits"
+    <AutoCompleteTextView android:id="@+id/digits"
         android:layout_width="match_parent"
         android:layout_height="74dip"
         android:gravity="center"
